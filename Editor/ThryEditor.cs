@@ -434,9 +434,20 @@ namespace Thry
             reloadNextDraw = true;
         }
 
+
+        Benchmark bmOnGUI;
+
+        void StartBenchmarking(int times = 1000)
+        {
+            bmOnGUI = new Benchmark("New GUI", 1000);
+        }
+
         //-------------Main Function--------------
         public override void OnGUI(MaterialEditor materialEditor, MaterialProperty[] props)
         {
+            if(GUILayout.Button("Benchmark"))
+                StartBenchmarking();
+            bmOnGUI?.Start();
             if (firstOnGUICall || (reloadNextDraw && Event.current.type == EventType.Layout))
             {
                 editorData = new EditorData();
@@ -562,6 +573,10 @@ namespace Thry
             input.HadMouseDownRepaint = false;
             editorData.firstCall = false;
             materialPropertyDictionary = null;
+
+            bmOnGUI?.Stop();
+            if(bmOnGUI?.HasRunsLeft ?? false)
+                repaint();
         }
 
         private bool IsSearchedFor(ShaderPart part, string term)
