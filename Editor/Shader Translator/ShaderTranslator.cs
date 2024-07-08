@@ -11,7 +11,7 @@ using UnityEngine.Serialization;
 
 namespace Thry.ThryEditor.ShaderTranslations
 {
-    public partial class ShaderTranslator : ScriptableObject
+    public class ShaderTranslator : ScriptableObject
     {
         public string Name;
         public string OriginShader;

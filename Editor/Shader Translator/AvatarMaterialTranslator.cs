@@ -4,6 +4,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEditor.UIElements;
@@ -22,7 +23,7 @@ namespace Thry.ThryEditor.ShaderTranslations
         static ObjectField avatarField;
 
         static List<string> allShaderNames;
-        List<Material> materials = new List<Material>();
+        internal List<Material> materials = new List<Material>();
 
         List<ShaderTranslator> translations = new List<ShaderTranslator>();
 
@@ -65,39 +66,18 @@ namespace Thry.ThryEditor.ShaderTranslations
 
             avatarField.RegisterValueChangedCallback(evt => FillMaterialListFromAvatarRenderers(evt.newValue as GameObject));
 
-            var itemTreeAsset = Resources.Load<VisualTreeAsset>("Shader Translator/AvatarMaterialTranslatorListItem");
-
             materialList = root.Q<ListView>("materialList");
-            materialList.itemsSource = materials;
-            materialList.makeItem += () =>
-            {
-                var itemRoot = new VisualElement();
-                itemTreeAsset.CloneTree(itemRoot);
-                var objField = itemRoot.Q<ObjectField>();
-                objField.SetEnabled(false);
-                return itemRoot;
-            };
+            materialList.makeItem += () => new AvatarMaterialTranslatorMaterialListItem(materialList, this);
 
             materialList.bindItem += (element, index) =>
             {
-                var objField = element.Q<ObjectField>();
-                objField.value = materials[index];
-                objField.RegisterValueChangedCallback(evt =>
-                {
-                    materials[index] = evt.newValue as Material;
-                    if(evt.newValue != null || evt.previousValue != null)
-                        UpdateTranslationsList(targetShaderDropdown.value);
-                });
-                element.Q<Button>().RegisterCallback<MouseUpEvent>(evt =>
-                {
-                    materialList.viewController.RemoveItem(index);
-                    materialList.Rebuild();
-                    UpdateTranslationsList(targetShaderDropdown.value);
-                });
+                var tr = element as AvatarMaterialTranslatorMaterialListItem;
+                tr.Bind(materials[index], index);
             };
-            materialList.itemsSourceChanged += () => UpdateTranslationsList(targetShaderDropdown.value);
-            materialList.itemsRemoved += (_) => UpdateTranslationsList(targetShaderDropdown.value);
-            materialList.itemsAdded += (_) => UpdateTranslationsList(targetShaderDropdown.value);
+
+            materialList.itemsSourceChanged += () => UpdateTranslationsList();
+            materialList.itemsRemoved += (_) => UpdateTranslationsList();
+            materialList.itemsAdded += (_) => UpdateTranslationsList();
 
             translationList = root.Q<ListView>("translationList");
             translationList.itemsSource = translations;
@@ -127,7 +107,7 @@ namespace Thry.ThryEditor.ShaderTranslations
                 .ToList();
 
             targetShaderDropdown.choices = allShaderNames;
-            targetShaderDropdown.RegisterValueChangedCallback((evt) => UpdateTranslationsList(evt.newValue));
+            targetShaderDropdown.RegisterValueChangedCallback((evt) => UpdateTranslationsList());
 
             root.Q<Button>("applyButton").RegisterCallback<MouseUpEvent>(ApplyPressed);
             root.Q<Button>("applyToCopyButton").RegisterCallback<MouseUpEvent>(ApplyToCopyPressed);
@@ -135,8 +115,9 @@ namespace Thry.ThryEditor.ShaderTranslations
             SelectAvatar();
         }
 
-        void UpdateTranslationsList(string newShaderName)
+        internal void UpdateTranslationsList()
         {
+            string newShaderName = targetShaderDropdown.value;
             if(string.IsNullOrWhiteSpace(newShaderName) || materials.Count == 0)
             {
                 translations.Clear();
