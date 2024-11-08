@@ -16,6 +16,7 @@ namespace Thry
         public ReadOnlyCollection<ShaderPart> Children => _readonlychildren;
 
         protected bool _isExpanded;
+        private bool _isSearchExpanded;
 
         public override bool PropertyValueIsDefault 
         {
@@ -37,7 +38,11 @@ namespace Thry
 
         public ShaderGroup(ShaderEditor shaderEditor, MaterialProperty prop, MaterialEditor materialEditor, string displayName, int xOffset, string optionsRaw, int propertyIndex) : base(shaderEditor, prop, xOffset, displayName, optionsRaw, propertyIndex)
         {
-
+            PropertyValueChanged += (PropertyValueEventArgs args) => 
+            {
+                if(!_doOptionsNeedInitilization && Options.persistent_expand)
+                    _isExpanded = this.MaterialProperty.GetNumber() == 1;
+            };
         }
 
         protected override void InitOptions()
@@ -51,16 +56,19 @@ namespace Thry
         {
             get
             {
-                return _isExpanded;
+                return ShaderEditor.Active.IsInSearchMode ? _isSearchExpanded : _isExpanded;
             }
             set
             {
+                if(ShaderEditor.Active.IsInSearchMode)
+                {
+                    _isSearchExpanded = value;
+                    return;
+                }
                 if (Options.persistent_expand)
                 {
                     if (AnimationMode.InAnimationMode())
                     {
-
-
 #if UNITY_2020_1_OR_NEWER
                         // So we do this instead
                         _isExpanded = value;
@@ -73,16 +81,25 @@ namespace Thry
                         
                         AnimationMode.StopAnimationMode();
                         this.MaterialProperty.SetNumber(value ? 1 : 0);
+                        Undo.SetCurrentGroupName((value ? "Expand" : "Collapse") + $" {Content.text} of {ShaderEditor.Active.TargetName}");
+                        RaisePropertyValueChanged();
                         AnimationMode.StartAnimationMode();
 #endif
                     }
                     else
                     {
                         this.MaterialProperty.SetNumber(value ? 1 : 0);
+                        Undo.SetCurrentGroupName((value ? "Expand" : "Collapse") + $" {Content.text} of {ShaderEditor.Active.TargetName}");
+                        RaisePropertyValueChanged();
                     }
                 }
                 _isExpanded = value;
             }
+        }
+
+        public void SetSearchExpanded(bool value)
+        {
+            _isSearchExpanded = value;
         }
 
         protected bool DoDisableChildren
@@ -174,7 +191,8 @@ namespace Thry
 
         protected void UpdateLinkedMaterials()
         {
-            List<Material> linked_materials = MaterialLinker.GetLinked(MaterialProperty);
+            if(ShaderEditor.Active.IsInAnimationMode) return;
+            IEnumerable<Material> linked_materials = MaterialLinker.GetLinked(MaterialProperty);
             if (linked_materials != null)
                 this.CopyTo(linked_materials.ToArray());
         }
@@ -185,8 +203,25 @@ namespace Thry
             {
                 Rect arrowRect = new RectOffset(4, 0, 0, 0).Remove(rect);
                 arrowRect.width = 13;
-                EditorStyles.foldout.Draw(arrowRect, false, false, _isExpanded, false);
+                EditorStyles.foldout.Draw(arrowRect, false, false, IsExpanded, false);
             }
+        }
+
+        public override bool Search(string searchTerm, List<ShaderGroup> foundHeaders, bool isParentInSearch = false)
+        {
+            bool found = isParentInSearch
+                || this.Content.text.IndexOf(searchTerm, System.StringComparison.OrdinalIgnoreCase) >= 0
+                || this.MaterialProperty?.name.IndexOf(searchTerm, System.StringComparison.OrdinalIgnoreCase) >= 0;
+            bool foundInChild = false;
+            foreach (ShaderPart p in Children)
+            {
+                if (p.Search(searchTerm, foundHeaders, isParentInSearch || found))
+                    foundInChild = true;
+            }
+            found |= foundInChild;
+            if(found && this is ShaderHeader) foundHeaders.Add(this);
+            this.has_not_searchedFor = !found;
+            return found;
         }
     }
 

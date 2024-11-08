@@ -3,12 +3,10 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Security.Policy;
 using JetBrains.Annotations;
 using Thry.ThryEditor;
 using UnityEditor;
 using UnityEngine;
-using UnityEngine.UIElements;
 using static UnityEditor.MaterialProperty;
 
 namespace Thry
@@ -257,13 +255,13 @@ namespace Thry
         public int ShaderPropertyIndex { protected set; get; } = -1;
         private string[] ShaderPropertyAttributes = null;
 
-        public bool has_not_searchedFor = false; //used for property search
+        protected bool has_not_searchedFor = false; //used for property search
 
         GenericMenu _contextMenu;
         public XOffsetManager XOffset { private set; get; }
 
         protected string _optionsRaw;
-        private bool _doOptionsNeedInitilization = true;
+        protected bool _doOptionsNeedInitilization = true;
         private PropertyOptions _options;
         public PropertyOptions Options
         {
@@ -276,6 +274,8 @@ namespace Thry
                 return _options;
             }
         }
+
+        public object PropertyValue { get; private set; }
 
 #region Setters
         public void SetIsExemptFromLockedDisabling(bool b)
@@ -302,7 +302,8 @@ namespace Thry
 
         protected void UpdatedMaterialPropertyReference()
         {
-            this.MaterialProperty = ActiveShaderEditor.Properties[ShaderPropertyIndex];
+            if(ShaderPropertyIndex != -1)
+                this.MaterialProperty = ActiveShaderEditor.Properties[ShaderPropertyIndex];
         }
 #endregion
 #region Getters
@@ -336,6 +337,7 @@ namespace Thry
             if (MaterialProperty == null)
                 return;
 
+            this.PropertyValue = MaterialHelper.GetValue(prop);
             this.ShaderPropertyId = Shader.PropertyToID(MaterialProperty.name);
             this.ShaderPropertyIndex = propertyIndex;
 
@@ -423,6 +425,7 @@ namespace Thry
             this.ShaderPropertyAttributes = ShaderEditor.Active.Shader.GetPropertyAttributes(this.ShaderPropertyIndex);
             this.IsAnimatable &= !HasAttribute("DoNotAnimate");
             this.IsExemptFromLockedDisabling |= ShaderOptimizer.IsPropertyExcemptFromLocking(this);
+            _doOptionsNeedInitilization = false;
         }
 #endregion
 
@@ -543,17 +546,14 @@ namespace Thry
         public void Draw(Rect? rect = null, GUIContent content = null, bool useEditorIndent = false, bool isInHeader = false)
         {
             if (_doOptionsNeedInitilization)
-            {
                 InitOptions();
-                _doOptionsNeedInitilization = false;
-            }
 
             if (has_not_searchedFor)
                 return;
+
             if (DrawingData.IsEnabled && Options.condition_enable != null)
-            {
                 hasAddedDisabledGroup = !Options.condition_enable.Test();
-            }
+
             if (hasAddedDisabledGroup)
             {
                 DrawingData.IsEnabled = !hasAddedDisabledGroup;
@@ -561,14 +561,54 @@ namespace Thry
             }
 
             if (Options.condition_show.Test())
-            {
                 PerformDraw(content, rect, useEditorIndent, isInHeader);
-            }
+
             if (hasAddedDisabledGroup)
             {
                 hasAddedDisabledGroup = false;
                 DrawingData.IsEnabled = true;
                 EditorGUI.EndDisabledGroup();
+            }
+        }
+        
+        private void PerformDraw(GUIContent content, Rect? rect, bool useEditorIndent, bool isInHeader = false)
+        {
+            if (content == null) content = this.Content;
+            DrawingData.IconsPositioningCount = 0;
+
+            UpdatedMaterialPropertyReference();
+            DrawInternal(content, rect, useEditorIndent, isInHeader);
+            CalculateIconPositions();
+            HandleRightClickToggles(isInHeader);
+
+            if (IsAnimatable && IsAnimated) DrawLockedAnimated();
+            if (IsPreset) DrawPresetProperty();
+
+            Tooltip.ConditionalDraw(DrawingData.TooltipCheckRect);
+
+            ExecuteClickEvents();
+        }
+
+        private void CalculateIconPositions()
+        {
+            if (this is ShaderTextureProperty == false)
+            {
+                DrawingData.TooltipCheckRect = DrawingData.LastGuiObjectRect;
+                if (DrawingData.IconsPositioningCount == 0)
+                {
+                    DrawingData.IconsPositioningCount = 1;
+                    DrawingData.IconsPositioningHeights[0] = DrawingData.LastGuiObjectRect.y + DrawingData.LastGuiObjectRect.height - 14;
+                }
+            }
+            DrawingData.TooltipCheckRect.width = EditorGUIUtility.labelWidth;
+        }
+
+        private void ExecuteClickEvents()
+        {
+            if (Event.current.type == EventType.MouseDown && DrawingData.LastGuiObjectRect.Contains(ShaderEditor.Input.mouse_position))
+            {
+                if ((ShaderEditor.Input.is_alt_down && Options.altClick != null)) Options.altClick.Perform(ShaderEditor.Active.Materials);
+                else if (Options.onClick != null) Options.onClick.Perform(ShaderEditor.Active.Materials);
             }
         }
         
@@ -952,61 +992,32 @@ namespace Thry
             IsRenaming = renamed;
             ShaderOptimizer.SetAnimatedTag(MaterialProperty, IsAnimated ? (IsRenaming ? "2" : "1") : "");
         }
-
-        private void PerformDraw(GUIContent content, Rect? rect, bool useEditorIndent, bool isInHeader = false)
-        {
-            if (content == null)
-                content = this.Content;
-            EditorGUI.BeginChangeCheck();
-
-            DrawingData.IconsPositioningCount = 0;
-
-            DrawInternal(content, rect, useEditorIndent, isInHeader);
-
-            if (this is ShaderTextureProperty == false)
-            {
-                DrawingData.TooltipCheckRect = DrawingData.LastGuiObjectRect;
-                if (DrawingData.IconsPositioningCount == 0)
-                {
-                    DrawingData.IconsPositioningCount = 1;
-                    DrawingData.IconsPositioningHeights[0] = DrawingData.LastGuiObjectRect.y + DrawingData.LastGuiObjectRect.height - 14;
-                }
-            }
-            DrawingData.TooltipCheckRect.width = EditorGUIUtility.labelWidth;
-
-            HandleRightClickToggles(isInHeader);
-
-            if (EditorGUI.EndChangeCheck())
-            {
-                OnPropertyValueChanged();
-                ExecuteOnValueActions(ShaderEditor.Active.Materials);
-                //Check if property is being animated
-                if (this is ShaderProperty && ActiveShaderEditor.ActiveRenderer != null && ActiveShaderEditor.IsInAnimationMode && IsAnimatable && !IsAnimated)
-                {
-                    if (MaterialProperty.type == MaterialProperty.PropType.Texture ?
-                        AnimationMode.IsPropertyAnimated(ActiveShaderEditor.ActiveRenderer, "material." + MaterialProperty.name + "_ST.x") :
-                        AnimationMode.IsPropertyAnimated(ActiveShaderEditor.ActiveRenderer, "material." + MaterialProperty.name))
-                        SetAnimated(true, false);
-                }
-            }
-
-            if (IsAnimatable && IsAnimated) DrawLockedAnimated();
-            if (IsPreset) DrawPresetProperty();
-
-            Tooltip.ConditionalDraw(DrawingData.TooltipCheckRect);
-
-            //Click testing
-            if (Event.current.type == EventType.MouseDown && DrawingData.LastGuiObjectRect.Contains(ShaderEditor.Input.mouse_position))
-            {
-                if ((ShaderEditor.Input.is_alt_down && Options.altClick != null)) Options.altClick.Perform(ShaderEditor.Active.Materials);
-                else if (Options.onClick != null) Options.onClick.Perform(ShaderEditor.Active.Materials);
-            }
-        }
 #endregion
 #region Actions / Callbacks
-        protected virtual void OnPropertyValueChanged()
+        
+        public delegate void PropertyValueChangeCallback(PropertyValueEventArgs args);
+        [PublicAPI]
+        public PropertyValueChangeCallback PropertyValueChanged;
+
+        protected void RaisePropertyValueChanged()
         {
-            _propertyValueIsDefaultCached = null;
+            object previousValue = PropertyValue;
+            PropertyValue = MaterialHelper.GetValue(MaterialProperty);
+            if(PropertyValueChanged != null)
+                PropertyValueChanged(new PropertyValueEventArgs(MaterialProperty.type, previousValue, PropertyValue));
+        }
+
+        public bool CheckForValueChange()
+        {
+            if (MaterialProperty == null)
+                return false;
+
+            object newValue = MaterialHelper.GetValue(MaterialProperty);
+            if((newValue != null && newValue.Equals(PropertyValue)) || (newValue == null && PropertyValue == null))
+                return false;
+
+            RaisePropertyValueChanged();
+            return true;
         }
 
         protected void ExecuteOnValueActions(Material[] targets)
@@ -1018,7 +1029,22 @@ namespace Thry
                 }
         }
 
+        public abstract bool Search(string searchTerm, List<ShaderGroup> foundHeaders, bool isParentInSearch = false);
         public abstract void FindUnusedTextures(List<string> unusedList, bool isEnabled);
 #endregion
+    }
+    
+    [PublicAPI]
+        public class PropertyValueEventArgs : EventArgs
+    {
+        public PropType propertyType { get; private set; }
+        public object previousValue { get; private set; }
+        public object currentValue { get; private set; }
+        public PropertyValueEventArgs(PropType propertyType, object previousValue, object newValue)
+        {
+            this.propertyType = propertyType;
+            this.previousValue = previousValue;
+            this.currentValue = newValue;
+        }
     }
 }

@@ -10,7 +10,7 @@ namespace Thry
     public class Config
     {
         private const string PATH_CONFIG_FILE = "Thry/Config.json";
-        private const string VERSION = "2.58.6";
+        private const string VERSION = "2.61.0";
 
         private static Config config;
 
@@ -67,6 +67,10 @@ namespace Thry
         public TextureImporterFormat texturePackerCompressionWithAlphaOverwrite = TextureImporterFormat.Automatic;
         public TextureImporterFormat texturePackerCompressionNoAlphaOverwrite = TextureImporterFormat.Automatic;
         public TextureImporterFormat gradientEditorCompressionOverwrite = TextureImporterFormat.Automatic;
+
+        public TextureSaveLocation inlinePackerSaveLocation = TextureSaveLocation.material;
+        public string inlinePackerSaveLocationCustom = "Assets/Textures/Packed";
+        public bool inlinePackerChrunchCompression = false;
 
         public string locale = "English";
 
@@ -194,5 +198,10 @@ namespace Thry
     public enum TextureDisplayType
     {
         small, big, big_basic
+    }
+
+    public enum TextureSaveLocation
+    {
+        material, texture, prompt, custom
     }
 }

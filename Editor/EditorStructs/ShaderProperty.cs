@@ -1,14 +1,8 @@
 using JetBrains.Annotations;
 using System;
-using System.CodeDom;
-using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
-using Thry.ThryEditor;
 using UnityEditor;
 using UnityEngine;
-using UnityEngine.UIElements;
 using static UnityEditor.MaterialProperty;
 
 namespace Thry
@@ -139,7 +133,7 @@ namespace Thry
             }
 
             ExecuteOnValueActions(ShaderEditor.Active.Materials);
-
+            RaisePropertyValueChanged();
             if (applyDrawers) ActiveShaderEditor.ApplyDrawers();
         }
 
@@ -162,7 +156,7 @@ namespace Thry
             }
 
             ExecuteOnValueActions(ShaderEditor.Active.Materials);
-
+            RaisePropertyValueChanged();
             if (applyDrawers) ActiveShaderEditor.ApplyDrawers();
         }
 
@@ -203,7 +197,7 @@ namespace Thry
             }
 
             target.ExecuteOnValueActions(target.MaterialProperty.targets as Material[]);
-
+            target.RaisePropertyValueChanged();
             if (applyDrawers) MaterialEditor.ApplyMaterialPropertyDrawers(target.MaterialProperty.targets as Material[]);
         }
 
@@ -232,6 +226,7 @@ namespace Thry
         }
         public static void RegisterDecorator(MaterialPropertyDrawer drawer)
         {
+            if(_activeProperty == null) return;
             if(_activeProperty._customDecorators.Contains(drawer) == false)
             {
                 _activeProperty._customDecorators.Add(drawer);
@@ -240,14 +235,18 @@ namespace Thry
         }
         public static void DisallowAnimation()
         {
+            if(_activeProperty == null) return;
             _activeProperty.IsAnimatable = false;
         }
 
         void InitializeDrawers()
         {
+            if(!_needsDrawerInitlization) return;
+            _needsDrawerInitlization = false;
             // Makes Drawers and Decorators Register themself
             _activeProperty = this;
             ShaderEditor.Active.Editor.GetPropertyHeight(MaterialProperty, MaterialProperty.displayName);
+            _activeProperty = null;
 
             if (MaterialProperty.type == MaterialProperty.PropType.Vector && _doForceIntoOneLine == false)
             {
@@ -288,14 +287,7 @@ namespace Thry
         protected override void DrawInternal(GUIContent content, Rect? rect = null, bool useEditorIndent = false, bool isInHeader = false)
         {
             ActiveShaderEditor.CurrentProperty = this;
-            UpdatedMaterialPropertyReference();
-
-            if (_needsDrawerInitlization)
-            {
-                InitializeDrawers();
-                _needsDrawerInitlization = false;
-            }
-
+            InitializeDrawers();
             PreDraw();
             if (ActiveShaderEditor.IsLockedMaterial)
                 EditorGUI.BeginDisabledGroup(!(IsAnimatable && (IsAnimated || IsRenaming)) && !IsExemptFromLockedDisabling);
@@ -312,6 +304,7 @@ namespace Thry
                 }
             }
 
+            EditorGUI.BeginChangeCheck();
             if (_doCustomDrawLogic)
             {
                 DrawDefault();
@@ -365,11 +358,30 @@ namespace Thry
                 }
             }
 
+            if(EditorGUI.EndChangeCheck())
+            {
+                Undo.SetCurrentGroupName($"Modify {Content.text} of {ShaderEditor.Active.TargetName}");
+                RaisePropertyValueChanged();
+                ExecuteOnValueActions(ShaderEditor.Active.Materials);
+                AutomaticAnimatedMarking();
+            }
+
             EditorGUI.indentLevel = oldIndentLevel;
             if (rect == null) DrawingData.LastGuiObjectRect = GUILayoutUtility.GetLastRect();
             else DrawingData.LastGuiObjectRect = rect.Value;
             if (ActiveShaderEditor.IsLockedMaterial)
                 EditorGUI.EndDisabledGroup();
+        }
+
+        private void AutomaticAnimatedMarking()
+        {
+            if (ActiveShaderEditor.ActiveRenderer != null && ActiveShaderEditor.IsInAnimationMode && IsAnimatable && !IsAnimated)
+            {
+                if (MaterialProperty.type == MaterialProperty.PropType.Texture ?
+                    AnimationMode.IsPropertyAnimated(ActiveShaderEditor.ActiveRenderer, "material." + MaterialProperty.name + "_ST.x") :
+                    AnimationMode.IsPropertyAnimated(ActiveShaderEditor.ActiveRenderer, "material." + MaterialProperty.name))
+                    SetAnimated(true, false);
+            }
         }
 
         protected virtual void PreDraw() { }
@@ -386,6 +398,13 @@ namespace Thry
             {
                 unusedList.Add(MaterialProperty.name);
             }
+        }
+
+        public override bool Search(string searchTerm, List<ShaderGroup> foundHeaders, bool isParentInSearch = false)
+        {
+            return isParentInSearch
+                || this.Content.text.IndexOf(searchTerm, System.StringComparison.OrdinalIgnoreCase) >= 0
+                || this.MaterialProperty?.name.IndexOf(searchTerm, System.StringComparison.OrdinalIgnoreCase) >= 0;
         }
     }
 

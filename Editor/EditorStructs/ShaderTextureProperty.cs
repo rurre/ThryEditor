@@ -1,12 +1,5 @@
-using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
-using Thry.ThryEditor;
 using UnityEditor;
 using UnityEngine;
-using UnityEngine.UIElements;
 
 namespace Thry
 {
@@ -22,6 +15,7 @@ namespace Thry
         {
             _doCustomDrawLogic = forceThryUI;
             this.hasScaleOffset = hasScaleOffset;
+            PropertyValueChanged += (PropertyValueEventArgs args) => _isVRAMDirty = true;
         }
 
         protected override void InitOptions()
@@ -41,12 +35,6 @@ namespace Thry
             {
                 VRAMString = null;
             }
-        }
-
-        protected override void OnPropertyValueChanged()
-        {
-            base.OnPropertyValueChanged();
-            _isVRAMDirty = true;
         }
 
         protected override void PreDraw()

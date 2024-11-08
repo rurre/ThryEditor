@@ -1,7 +1,4 @@
-﻿using System.Collections;
-using System.Collections.Generic;
-using System.Runtime.Remoting.Messaging;
-using UnityEditor;
+﻿using UnityEditor;
 using UnityEngine;
 
 namespace Thry
@@ -23,6 +20,7 @@ namespace Thry
         private Mode _mode = Mode.None;
         private HandleMode _handleMode = HandleMode.Position;
         private Tool _previousTool;
+        private int _initalUndoGroup;
 
         public enum Mode
         {
@@ -78,17 +76,33 @@ namespace Thry
             SceneView.duringSceneGui += OnSceneGUI;
             Selection.selectionChanged += OnSelectionChange;
             _isActive = true;
+
+            _initalUndoGroup = Undo.GetCurrentGroup();
         }
 
-        public void Deactivate() 
+        public void Deactivate(bool discardChanges) 
         {
             if(!_isActive) return;
             SceneView.duringSceneGui -= OnSceneGUI;
             Selection.selectionChanged -= OnSelectionChange;
             Tools.current = _previousTool;
             _isActive = false;
+
+            if(discardChanges)
+            {
+                Undo.RevertAllDownToGroup(_initalUndoGroup);
+            }else if(_mode == Mode.Raycast)
+            {
+                Undo.SetCurrentGroupName("Apply Decal Raycast Tool");
+                Undo.CollapseUndoOperations(_initalUndoGroup);
+            }
+            if(Undo.GetCurrentGroup() != _initalUndoGroup + 1)
+            {
+                Undo.SetCurrentGroupName("Apply Decal Scene Tool");
+                Undo.CollapseUndoOperations(_initalUndoGroup);
+            }
+
             _mode = Mode.None;
-            
         }
 
         public Mode GetMode()
@@ -98,7 +112,7 @@ namespace Thry
 
         void OnSelectionChange() 
         {
-            this.Deactivate();
+            this.Deactivate(false);
         }
 
         void Init()
@@ -142,6 +156,11 @@ namespace Thry
 
         private void OnSceneGUI(SceneView sceneView) 
         {
+            if(Event.current.type == EventType.KeyUp && Event.current.keyCode == KeyCode.Escape)
+            {
+                Deactivate(true);
+                return;
+            }
             switch(_mode)
             {
                 case Mode.Raycast:
@@ -171,7 +190,7 @@ namespace Thry
             if(Event.current.type == EventType.MouseDown && Event.current.button == 0)
             {
                 Event.current.Use();
-                Deactivate();
+                Deactivate(false);
             }
         }
 

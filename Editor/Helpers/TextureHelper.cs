@@ -1,11 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
-using System.Linq;
-using System.Reflection;
-using System.Runtime.InteropServices;
-using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Profiling;
@@ -77,6 +72,24 @@ namespace Thry
                 settings.ApplyModes(path);
             Texture saved = AssetDatabase.LoadAssetAtPath<Texture>(path);
             return saved;
+        }
+
+        public static Texture2D ConvertToGamma(Texture2D texture)
+        {
+            Texture2D ret = new Texture2D(texture.width, texture.height, TextureFormat.RGBA32, texture.mipmapCount > 0);
+            for (int x = 0; x < texture.width; x++)
+            {
+                for (int y = 0; y < texture.height; y++)
+                {
+                    Color c = texture.GetPixel(x, y);
+                    c.r = Mathf.Pow(c.r, 1/2.2f);
+                    c.g = Mathf.Pow(c.g, 1/2.2f);
+                    c.b = Mathf.Pow(c.b, 1/2.2f);
+                    ret.SetPixel(x, y, c);
+                }
+            }
+            ret.Apply();
+            return ret;
         }
 
         public static void MakeTextureReadible(string path)
@@ -336,50 +349,6 @@ namespace Thry
                 }
 
                 return (bytesCount, add);
-            }
-        }
-
-        [MenuItem("Assets/Thry/Textures/Find References", true)]
-        private static bool FindReferencesValidate()
-        {
-            return Selection.activeObject is Texture;
-        }
-
-        [MenuItem("Assets/Thry/Textures/Find References", false, 304)]
-        private static void FindReferences()
-        {
-            Texture texture = Selection.activeObject as Texture;
-            string guid = AssetDatabase.AssetPathToGUID(AssetDatabase.GetAssetPath(texture));
-            Material[] materials = Resources.FindObjectsOfTypeAll<Material>();
-            Dictionary<Material, string> textureUses = new Dictionary<Material,string>();
-            // Search files for references
-            foreach (Material material in materials)
-            {
-                string path = AssetDatabase.GetAssetPath(material);
-                if (File.Exists(path))
-                {
-                    string[] lines = File.ReadAllLines(path);
-                    for(int i = 0; i < lines.Length; i++)
-                    {
-                        if (lines[i].IndexOf(guid, StringComparison.OrdinalIgnoreCase) != -1)
-                        {
-                            textureUses.Add(material, lines[i-1].Substring(6, lines[i-1].Length - 7));
-                        }
-                    }
-                }
-            }
-
-            string output = "";
-            foreach (KeyValuePair<Material, string> entry in textureUses)
-            {
-                output += entry.Key.name + " -> " + entry.Value + "\n";
-            }
-            if (output == "")
-            {
-                EditorUtility.DisplayDialog("Texture not used", "The texture is not used in any material.", "OK");
-            }else
-            {
-                EditorUtility.DisplayDialog("Texture used in", output, "OK");
             }
         }
     }
