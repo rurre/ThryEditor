@@ -124,7 +124,6 @@ namespace Thry
     {
         public ShaderEditor ActiveShaderEditor { protected set; get; }
         public MaterialProperty MaterialProperty { private set; get; }
-
         public GUIContent Content 
         {
             protected set
@@ -137,13 +136,12 @@ namespace Thry
             }
             get
             {
-                if(UseSpecialLabelWhenValueNotDefault && !PropertyValueIsDefault) //TODO: Laggy
+                if(UseSpecialLabelWhenValueNotDefault && !PropertyValueIsDefault)
                     return _contentNonDefault;
                 return _content;
             }
         }
         GUIContent _content, _contentNonDefault;
-
         bool UseSpecialLabelWhenValueNotDefault
         {
             get
@@ -155,7 +153,7 @@ namespace Thry
             }
         }
         bool? _useSpecialLabelWhenValueNotDefault = true;
-        
+
         public BetterTooltips.Tooltip Tooltip { protected set; get; }
         public System.Object PropertyData { protected set; get; } = null;
 
@@ -1003,6 +1001,10 @@ namespace Thry
         {
             object previousValue = PropertyValue;
             PropertyValue = MaterialHelper.GetValue(MaterialProperty);
+            
+            if(PropertyValue != previousValue)
+                _propertyValueIsDefaultCached = null;
+
             if(PropertyValueChanged != null)
                 PropertyValueChanged(new PropertyValueEventArgs(MaterialProperty.type, previousValue, PropertyValue));
         }
