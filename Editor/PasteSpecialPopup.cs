@@ -6,11 +6,12 @@ using UnityEngine;
 
 namespace Thry
 {
-    public class ListTogglesPopup : EditorWindow
+    public class PasteSpecialPopup : EditorWindow
     {
         class ShaderPartUIAdapter
         {
             public ShaderPart ShaderPart { get; private set; }
+            public bool IsDefaultValue { get; private set; }
             public bool HasChildren => children.Count > 0;
             public bool IsEnabled { get; set; } = true;
 

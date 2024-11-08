@@ -127,7 +127,37 @@ namespace Thry
         public ShaderEditor ActiveShaderEditor { protected set; get; }
         public MaterialProperty MaterialProperty { private set; get; }
 
-        public GUIContent Content { protected set; get; }
+        public GUIContent Content 
+        {
+            protected set
+            {
+                _content = value;
+                if(string.IsNullOrWhiteSpace(value.text))
+                    return;
+                
+                _contentNonDefault = new GUIContent(value.text + '*');
+            }
+            get
+            {
+                if(UseSpecialLabelWhenValueNotDefault && !PropertyValueIsDefault) //TODO: Laggy
+                    return _contentNonDefault;
+                return _content;
+            }
+        }
+        GUIContent _content, _contentNonDefault;
+
+        bool UseSpecialLabelWhenValueNotDefault
+        {
+            get
+            {
+                if(_useSpecialLabelWhenValueNotDefault != null)
+                    return (bool)_useSpecialLabelWhenValueNotDefault;
+                return false;
+                //TODO: Implement settings logic
+            }
+        }
+        bool? _useSpecialLabelWhenValueNotDefault = true;
+        
         public BetterTooltips.Tooltip Tooltip { protected set; get; }
         public System.Object PropertyData { protected set; get; } = null;
 
@@ -144,6 +174,84 @@ namespace Thry
 
         public bool DoReferencePropertiesExist { protected set; get; } = false;
         public bool DoesReferencePropertyExist { protected set; get; } = false;
+
+        public virtual bool PropertyValueIsDefault
+        {
+            get
+            {
+                if(MaterialProperty == null)
+                    return false;
+
+                if(_propertyValueIsDefaultCached != null)
+                    return (bool)_propertyValueIsDefaultCached;
+
+                MaterialProperty.PropType type = this.MaterialProperty.type;
+                if (type == MaterialProperty.PropType.Color) type = MaterialProperty.PropType.Vector;
+                if (type == MaterialProperty.PropType.Range) type = MaterialProperty.PropType.Float;
+
+                int index = ShaderEditor.Active.Shader.FindPropertyIndex(this.MaterialProperty.name);
+
+                bool isSingleMaterial = ShaderEditor.Active.Materials.Length == 1;
+                object defaultValue = null;
+                if (type == MaterialProperty.PropType.Float)
+                    defaultValue = ShaderEditor.Active.Shader.GetPropertyDefaultFloatValue(index);
+#if UNITY_2022_1_OR_NEWER
+                else if (type == MaterialProperty.PropType.Int)
+                    defaultValue = ShaderEditor.Active.Shader.GetPropertyDefaultIntValue(index);
+#endif
+                else if (type == MaterialProperty.PropType.Vector)
+                    defaultValue = ShaderEditor.Active.Shader.GetPropertyDefaultVectorValue(index);
+                else if (type == MaterialProperty.PropType.Texture)
+                    defaultValue = ShaderEditor.Active.Shader.GetPropertyTextureDefaultName(index);
+                
+                // Check if is not default value
+                if (type == MaterialProperty.PropType.Float)
+                {
+                    if(isSingleMaterial)
+                        _propertyValueIsDefaultCached = ShaderEditor.Active.Materials[0].GetNumber(this.MaterialProperty) == (float)defaultValue;
+                    else
+                        _propertyValueIsDefaultCached = ShaderEditor.Active.Materials.All(mat => mat.GetNumber(this.MaterialProperty) == (float)defaultValue);
+                }
+#if UNITY_2022_1_OR_NEWER
+                else if (type == MaterialProperty.PropType.Int)
+                {
+                    if(isSingleMaterial)
+                        _propertyValueIsDefaultCached = ShaderEditor.Active.Materials[0].GetInt(this.MaterialProperty.name) == (int)defaultValue;
+                    else
+                        _propertyValueIsDefaultCached = ShaderEditor.Active.Materials.All(mat => mat.GetInt(this.MaterialProperty.name) == (int)defaultValue);
+                }
+#endif
+                else if (type == MaterialProperty.PropType.Vector)
+                {
+                    if(isSingleMaterial)
+                        _propertyValueIsDefaultCached = ShaderEditor.Active.Materials[0].GetVector(this.MaterialProperty.name) == (Vector4)defaultValue;
+                    else
+                        _propertyValueIsDefaultCached = ShaderEditor.Active.Materials.All(mat => mat.GetVector(this.MaterialProperty.name) == (Vector4)defaultValue);
+                }
+                else if (type == MaterialProperty.PropType.Texture)
+                {
+                    if(isSingleMaterial)
+                    {
+                        var texture = ShaderEditor.Active.Materials[0].GetTexture(this.MaterialProperty.name);
+                        _propertyValueIsDefaultCached = (texture == null || texture.name == (string)defaultValue);
+                    }
+                    else
+                    {
+                        _propertyValueIsDefaultCached = ShaderEditor.Active.Materials.All(mat =>
+                        {
+                            var texture = mat.GetTexture(this.MaterialProperty.name);
+                            return texture == null || texture.name == (string)defaultValue;
+                        });
+                    }
+                }
+
+                if(_propertyValueIsDefaultCached == null)
+                    return false;
+                return (bool)_propertyValueIsDefaultCached;
+            }
+        }
+
+        bool? _propertyValueIsDefaultCached;
 
         public int ShaderPropertyId { protected set; get; } = -1;
         public int ShaderPropertyIndex { protected set; get; } = -1;
@@ -244,47 +352,11 @@ namespace Thry
             MaterialProperty.PropType type = this.MaterialProperty.type;
             if (type == MaterialProperty.PropType.Color) type = MaterialProperty.PropType.Vector;
             if (type == MaterialProperty.PropType.Range) type = MaterialProperty.PropType.Float;
-
-            int index = ShaderEditor.Active.Shader.FindPropertyIndex(this.MaterialProperty.name);
-
-            object defaultValue = null;
-            if (type == MaterialProperty.PropType.Float)
-                defaultValue = ShaderEditor.Active.Shader.GetPropertyDefaultFloatValue(index);
-#if UNITY_2022_1_OR_NEWER
-            else if (type == MaterialProperty.PropType.Int)
-                defaultValue = ShaderEditor.Active.Shader.GetPropertyDefaultIntValue(index);
-#endif
-            else if (type == MaterialProperty.PropType.Vector)
-                defaultValue = ShaderEditor.Active.Shader.GetPropertyDefaultVectorValue(index);
-            else if (type == MaterialProperty.PropType.Texture)
-                defaultValue = ShaderEditor.Active.Shader.GetPropertyTextureDefaultName(index);
-
+            
             foreach (Material m in ShaderEditor.Active.Materials)
             {
-                // Check if is not default value
-                if (type == MaterialProperty.PropType.Float)
-                {
-                    if (m.GetNumber(this.MaterialProperty) != (float)defaultValue)
-                        continue;
-                }
-#if UNITY_2022_1_OR_NEWER
-                else if (type == MaterialProperty.PropType.Int)
-                {
-                    if (m.GetInt(this.MaterialProperty.name) != (int)defaultValue)
-                        continue;
-                }
-#endif
-                else if (type == MaterialProperty.PropType.Vector)
-                {
-                    if (m.GetVector(this.MaterialProperty.name) != (Vector4)defaultValue)
-                        continue;
-                }
-                else if (type == MaterialProperty.PropType.Texture)
-                {
-                    if (m.GetTexture(this.MaterialProperty.name) != null &&
-                        m.GetTexture(this.MaterialProperty.name).name != (string)defaultValue)
-                        continue;
-                }
+                if(PropertyValueIsDefault)
+                    continue;
 
                 // Material as serializedObject
                 SerializedObject serializedObject = new SerializedObject(m);
@@ -934,7 +1006,7 @@ namespace Thry
 #region Actions / Callbacks
         protected virtual void OnPropertyValueChanged()
         {
-
+            _propertyValueIsDefaultCached = null;
         }
 
         protected void ExecuteOnValueActions(Material[] targets)

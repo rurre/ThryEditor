@@ -17,6 +17,14 @@ namespace Thry
 
         protected bool _isExpanded;
 
+        public override bool PropertyValueIsDefault 
+        {
+            get
+            {
+                return Children.All(child => child.PropertyValueIsDefault);
+            }
+        }
+
         public ShaderGroup(ShaderEditor shaderEditor) : base(null, 0, "", null, shaderEditor)
         {
 

@@ -12,7 +12,14 @@ namespace Thry
 {
     public class ShaderHeader : ShaderGroup
     {
-
+        public override bool PropertyValueIsDefault
+        {
+            get
+            {
+                return base.PropertyValueIsDefault && Children.All(child => child.PropertyValueIsDefault);
+            }
+        }
+        
         public ShaderHeader(ShaderEditor shaderEditor) : base(shaderEditor)
         {
         }
@@ -226,7 +233,7 @@ namespace Thry
                 if(Mediator.copy_material == null || Mediator.copy_part == null)
                     return;
                 
-                var popup = ScriptableObject.CreateInstance<ListTogglesPopup>();
+                var popup = ScriptableObject.CreateInstance<PasteSpecialPopup>();
                 popup.Init(Mediator.copy_part);
                 popup.ShowUtility();
                 
