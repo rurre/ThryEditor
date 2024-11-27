@@ -181,6 +181,9 @@ namespace Thry.ThryEditor.ShaderTranslations
 
             void _HandlePropertyModifications(ShaderEditor _editor, Shader _originShader, List<ShaderNameMatchedModifications> modifications)
             {
+                if(modifications == null)
+                    return;
+
                 foreach(var mod in modifications)
                 {
                     if(!mod.IsShaderNameMatch(_originShader.name))
